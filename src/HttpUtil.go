@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	_ "github.com/go-sql-driver/mysql"
 	"io/ioutil"
@@ -24,6 +25,29 @@ type K_Line struct {
 	create_tmstmp int64
 }
 
+type Tick struct {
+	Open float64
+	Last float64
+	Low  float64
+	High float64
+	Vol  float64
+	Buy  float64
+	Sell float64
+}
+
+type StaticMarket struct {
+	Time   string
+	Ticker Tick
+}
+
+var (
+	db      *sql.DB
+	db_user string = "root"
+	db_pwd  string = ""
+	tmNow   time.Time
+	lastTm  string = ""
+)
+
 func parseData(data []byte) (interface{}, error) {
 	var res []interface{}
 	err := json.Unmarshal(data, &res)
@@ -33,12 +57,14 @@ func parseData(data []byte) (interface{}, error) {
 	return res, nil
 }
 
-var (
-	db      *sql.DB
-	db_user string = "root"
-	db_pwd  string = ""
-	tmNow   time.Time
-)
+func ParseStaticMarket(data []byte) (StaticMarket, error) {
+	var staticMarket StaticMarket
+	err := json.Unmarshal(data, &staticMarket)
+	if nil != err {
+		return staticMarket, err
+	}
+	return staticMarket, nil
+}
 
 func InsertDB(k *K_Line) {
 	_, err := db.Exec("INSERT INTO k_line_1_min(time, start, high, low, close, amount, tm_stmp, c_tm, c_tm_stmp) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -47,6 +73,16 @@ func InsertDB(k *K_Line) {
 	if nil != err {
 		log.Fatal("insert to talbe error: " + err.Error())
 	}
+}
+
+func InsertStaticMarket(s *StaticMarket) {
+	_, err := db.Exec("INSERT INTO static_market(time, open, last, low, high, vol, buy, sell, c_tm_stmp) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		k.tm, k.open, k.high, k.low, k.cl, k.amount, k.tm_stmp, k.create_tm, k.create_tmstmp)
+
+	if nil != err {
+		log.Fatal("insert to talbe error: " + err.Error())
+	}
+
 }
 
 func printData(d *interface{}) {
@@ -92,6 +128,51 @@ func get(url string) (data []byte, err error) {
 	return data1, nil
 }
 
+func KLine() {
+	tmNow = time.Now()
+
+	data, err := get("http://api.huobi.com/staticmarket/btc_kline_001_json.js?length=1")
+	if nil != err {
+		log.Println("request error: " + err.Error())
+		return
+	}
+
+	data1, err1 := parseData(data)
+	if nil != err1 {
+		log.Println("parse resp error: " + err1.Error())
+		return
+	}
+	printData(&data1)
+}
+
+func StaticMarketF() {
+	tmNow = time.Now()
+
+	data, err := get("http://api.huobi.com/staticmarket/ticker_btc_json.js")
+	if nil != err {
+		log.Println("request error: " + err.Error())
+		return
+	}
+	res, err1 := ParseStaticMarket(data)
+	if nil != err1 {
+		log.Println("parse error: " + err1.Error())
+		return
+	}
+	if lastTm != res.Time {
+		fmt.Println(lastTm, res.Time, res)
+		lastTm = res.Time
+	} else {
+		fmt.Println(lastTm)
+	}
+}
+
+func Ticker(dur time.Duration, fun func()) {
+	t := time.Tick(dur)
+	for range t {
+		fun()
+	}
+}
+
 func main() {
 	tmp, err := sql.Open("mysql", fmt.Sprintf("%s:%s@/bitcoin?charset=utf8", db_user, db_pwd))
 	if nil != err {
@@ -99,21 +180,16 @@ func main() {
 	}
 	db = tmp
 
-	t := time.Tick(time.Minute * 1)
-	for range t {
-		tmNow = time.Now()
+	val := flag.Uint("t", 0, "0 => k_line, 1 => static market")
+	flag.Parse()
 
-		data, err := get("http://api.huobi.com/staticmarket/btc_kline_001_json.js?length=1")
-		if nil != err {
-			log.Fatalln("request error: " + err.Error())
-		}
-
-		data1, err1 := parseData(data)
-		if nil != err1 {
-			log.Fatalln("parse resp error: " + err1.Error())
-		}
-
-		printData(&data1)
+	switch *val {
+	case 0:
+		Ticker(time.Second, KLine)
+	case 1:
+		Ticker(time.Second*2, StaticMarketF)
+	default:
+		fmt.Println("nothing")
 	}
 
 }
