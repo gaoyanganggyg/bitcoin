@@ -13,12 +13,15 @@ import (
 )
 
 type K_Line struct {
-	tm     string
-	open   float64
-	high   float64
-	low    float64
-	cl     float64
-	amount float64
+	tm            string
+	open          float64
+	high          float64
+	low           float64
+	cl            float64
+	amount        float64
+	tm_stmp       int64
+	create_tm     string
+	create_tmstmp int64
 }
 
 func parseData(data []byte) (interface{}, error) {
@@ -34,10 +37,12 @@ var (
 	db      *sql.DB
 	db_user string = "root"
 	db_pwd  string = ""
+	tmNow   time.Time
 )
 
 func InsertDB(k *K_Line) {
-	_, err := db.Exec("INSERT INTO k_line_1_min(time, start, high, low, close, amount) VALUES(?,?,?,?,?,?)", k.tm, k.open, k.high, k.low, k.cl, k.amount)
+	_, err := db.Exec("INSERT INTO k_line_1_min(time, start, high, low, close, amount, tm_stmp, c_tm, c_tm_stmp) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		k.tm, k.open, k.high, k.low, k.cl, k.amount, k.tm_stmp, k.create_tm, k.create_tmstmp)
 
 	if nil != err {
 		log.Fatal("insert to talbe error: " + err.Error())
@@ -57,7 +62,15 @@ func printData(d *interface{}) {
 
 		tmF := fmt.Sprintf("%s-%s-%s %s:%s:%s", tm[0:4], tm[4:6], tm[6:8], tm[8:10], tm[10:12], tm[12:14])
 
-		k_line := K_Line{tmF, open, high, low, close, amount}
+		loc, _ := time.LoadLocation("Local")
+		tmStmp, err := time.ParseInLocation("20060102150400000", tm, loc)
+		if err != nil {
+			log.Println("time parse error: " + err.Error())
+			return
+		}
+		tmNowStr := tmNow.Format("2006-01-02 15:04:05")
+
+		k_line := K_Line{tmF, open, high, low, close, amount, tmStmp.Unix(), tmNowStr, tmNow.Unix()}
 
 		InsertDB(&k_line)
 	}
@@ -80,7 +93,7 @@ func get(url string) (data []byte, err error) {
 }
 
 func main() {
-	tmp, err := sql.Open("mysql", "root:gaoyangang1990!@/bitcoin?charset=utf8")
+	tmp, err := sql.Open("mysql", fmt.Sprintf("%s:%s@/bitcoin?charset=utf8", db_user, db_pwd))
 	if nil != err {
 		log.Fatalln("open sql error : " + err.Error())
 	}
@@ -88,6 +101,7 @@ func main() {
 
 	t := time.Tick(time.Minute * 1)
 	for range t {
+		tmNow = time.Now()
 
 		data, err := get("http://api.huobi.com/staticmarket/btc_kline_001_json.js?length=1")
 		if nil != err {
