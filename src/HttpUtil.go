@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strconv"
 	"time"
 )
 
@@ -42,8 +43,10 @@ type StaticMarket struct {
 
 var (
 	db      *sql.DB
-	db_user string = "root"
+	db_user string = ""
 	db_pwd  string = ""
+	db_url  string = ""
+	db_port int    = 0
 	tmNow   time.Time
 	lastTm  string = ""
 )
@@ -67,22 +70,29 @@ func ParseStaticMarket(data []byte) (StaticMarket, error) {
 }
 
 func InsertDB(k *K_Line) {
-	_, err := db.Exec("INSERT INTO k_line_1_min(time, start, high, low, close, amount, tm_stmp, c_tm, c_tm_stmp) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+	_, err := db.Exec("INSERT INTO k_line_1_min(time, start, high, low, close, amount, tm_stmp, c_tm, c_tm_stmp)  VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
 		k.tm, k.open, k.high, k.low, k.cl, k.amount, k.tm_stmp, k.create_tm, k.create_tmstmp)
 
 	if nil != err {
-		log.Fatal("insert to talbe error: " + err.Error())
+		log.Println("insert to talbe error: " + err.Error())
+		return
 	}
 }
 
 func InsertStaticMarket(s *StaticMarket) {
-	_, err := db.Exec("INSERT INTO static_market(time, open, last, low, high, vol, buy, sell, c_tm_stmp) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
-		k.tm, k.open, k.high, k.low, k.cl, k.amount, k.tm_stmp, k.create_tm, k.create_tmstmp)
+	tm_int, _ := strconv.ParseInt(s.Time, 10, 32)
+
+	tm_str := time.Unix(tm_int, 0).Format("2006-01-02 15:04:05")
+	tm_cr_stmp := tmNow.Unix()
+	tm_cr_str := tmNow.Format("2006-01-02 15:04:05")
+
+	_, err := db.Exec("INSERT INTO static_market(tm_stmp, tm_str, tm_cr_stmp, tm_cr_str, open, last, low, high, vol, buy, sell) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		s.Time, tm_str, tm_cr_stmp, tm_cr_str, s.Ticker.Open, s.Ticker.Last, s.Ticker.Low, s.Ticker.High, s.Ticker.Vol, s.Ticker.Buy, s.Ticker.Sell)
 
 	if nil != err {
-		log.Fatal("insert to talbe error: " + err.Error())
+		log.Println("insert to talbe error: " + err.Error())
+		return
 	}
-
 }
 
 func printData(d *interface{}) {
@@ -161,6 +171,7 @@ func StaticMarketF() {
 	if lastTm != res.Time {
 		fmt.Println(lastTm, res.Time, res)
 		lastTm = res.Time
+		InsertStaticMarket(&res)
 	} else {
 		fmt.Println(lastTm)
 	}
@@ -174,7 +185,7 @@ func Ticker(dur time.Duration, fun func()) {
 }
 
 func main() {
-	tmp, err := sql.Open("mysql", fmt.Sprintf("%s:%s@/bitcoin?charset=utf8", db_user, db_pwd))
+	tmp, err := sql.Open("mysql", fmt.Sprintf("%s:%s@tcp(%s:%d)/bitcoin?charset=utf8", db_user, db_pwd, db_url, db_port))
 	if nil != err {
 		log.Fatalln("open sql error : " + err.Error())
 	}
