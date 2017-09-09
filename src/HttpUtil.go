@@ -44,7 +44,7 @@ type StaticMarket struct {
 var (
 	db      *sql.DB
 	db_user string = ""
-	db_pwd  string = ""
+	db_pwd  string = "!"
 	db_url  string = ""
 	db_port int    = 0
 	tmNow   time.Time
@@ -169,11 +169,8 @@ func StaticMarketF() {
 		return
 	}
 	if lastTm != res.Time {
-		fmt.Println(lastTm, res.Time, res)
 		lastTm = res.Time
 		InsertStaticMarket(&res)
-	} else {
-		fmt.Println(lastTm)
 	}
 }
 
@@ -196,7 +193,7 @@ func main() {
 
 	switch *val {
 	case 0:
-		Ticker(time.Second, KLine)
+		Ticker(time.Minute, KLine)
 	case 1:
 		Ticker(time.Second*2, StaticMarketF)
 	default:
